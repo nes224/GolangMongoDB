@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var userCollection *mongo.Collection = configs.GetCollection(configs.DB, "users")
@@ -181,6 +182,46 @@ func GetAllUser() gin.HandlerFunc {
 				return
 			}
 			users = append(users, singleUser)
+		}
+		c.JSON(http.StatusOK,
+			responses.UserResponse{Status: http.StatusOK, 
+				Message: "success", 
+				Data: map[string]interface{}{"Data": users}},
+		)
+	}
+}
+
+type searchUsers struct {
+	offsetSize int32 `form:"offset" binding:"required,min=1"`
+	limit int32 `form:"limit" binding:"required,min=5,max=10"`
+}
+
+func SearchUser() gin.HandlerFunc{
+	return func(c *gin.Context){
+		var req searchUsers
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		
+		var users[] models.User
+		defer cancel()
+		l := int64(req.limit)
+		skip := int64(req.offsetSize)
+		fmt.Println("L: l", req.limit)
+		fmt.Println("Offset: skip", req.offsetSize)
+		fOpt := options.FindOptions{Limit: &l, Skip: &skip}
+		results, err := userCollection.Find(ctx, bson.M{}, &fOpt)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,responses.UserResponse{Status: http.StatusInternalServerError,Message:"Error"})
+			return 
+		}
+		// fmt.Println("results %+v\n", c.BindJSON(results))
+		defer results.Close(ctx)
+		for results.Next(ctx) {
+			var result models.User
+			if err := results.Decode(&result); err != nil {
+				c.JSON(http.StatusInternalServerError, responses.UserResponse{Status: http.StatusInternalServerError, Message: "error", Data: map[string]interface{}{"Data": err.Error()}})
+				return 
+			}
+			users = append(users, result)
 		}
 		c.JSON(http.StatusOK,
 			responses.UserResponse{Status: http.StatusOK, 
